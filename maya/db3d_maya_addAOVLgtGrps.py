@@ -1,4 +1,4 @@
-####Author: Dan Bruce
+####Author: Dan C Bruce
 ####Email: dancbruce@gmail.com
 ####Date: 05/30/2024
 ####Software: Maya 2022.4
