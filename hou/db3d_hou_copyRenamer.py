@@ -2,9 +2,9 @@
 ####Email: dancbruce@gmail.com
 ####Date: 04/25/2024
 ####Software: Houdini 19.0.622 Python 3
-####Version: 1.0
+####Version: 1.1
 ####Note: Tool for copying and renaming selected nodes.
-####Update: Initial release
+####Update: Added auto selection callbacks and fixed copy issues.
 
 from PySide2 import QtCore
 from PySide2 import QtWidgets
@@ -28,8 +28,10 @@ class Copy_Renamer(QtWidgets.QWidget):
         self.node_list = []
 
         #Connect UI
-        self.ui.refresh_nodes_button.pressed.connect(self.update_refresh_node_select)
         self.ui.operation_combo.activated.connect(self.update_operation_select)
+        self.ui.rop_output_check.toggled.connect(self.update_rop_output_toggled)
+        self.ui.rop_variant_check.toggled.connect(self.update_rop_variant_toggled)
+        self.ui.rop_context_check.toggled.connect(self.update_rop_context_toggled)
 
         self.ui.search_replace_count_spin.valueChanged.connect(self.op_search_replace_table)
         self.ui.search_edit.textEdited.connect(self.op_search_replace_table)
@@ -56,6 +58,14 @@ class Copy_Renamer(QtWidgets.QWidget):
 
         self.ui.rename_button.pressed.connect(self.util_rename_nodes)
 
+        hou.ui.addSelectionCallback(self.selectionCallback)
+
+    def closeEvent(self,event):
+        hou.ui.removeAllSelectionCallbacks()
+
+    def selectionCallback(self,selection):
+        self.select_node_list = selection
+        self.node_list = []
         self.update_refresh_node_select()
 
     #Update
@@ -67,8 +77,12 @@ class Copy_Renamer(QtWidgets.QWidget):
 
     def update_refresh_node_list(self):
         self.node_list= []
-        for node in hou.selectedNodes():
-            if node.parent().path() == hou.selectedNodes()[0].parent().path():
+        for node in self.select_node_list:
+            if '__netbox' in node.name():
+                continue
+            if '__stickynote' in node.name():
+                continue
+            if node.parent().path() == self.select_node_list[0].parent().path():
                 add_list = [node.name(),node.path(),node.parent().path()]
                 self.node_list.append(add_list)
         self.node_list.sort()
@@ -134,6 +148,7 @@ class Copy_Renamer(QtWidgets.QWidget):
         self.ui.search_replace_widget.setVisible(0)
         self.ui.insert_overwrite_widget.setVisible(0)
         self.ui.numbering_widget.setVisible(0)
+        self.ui.arnold_rop_widget.setVisible(0)
 
         if index == 0:
             self.ui.search_replace_widget.setVisible(1)
@@ -141,8 +156,18 @@ class Copy_Renamer(QtWidgets.QWidget):
             self.ui.insert_overwrite_widget.setVisible(1)
         if index == 2:
             self.ui.numbering_widget.setVisible(1)
+        if index == 3:
+            self.ui.arnold_rop_widget.setVisible(1)
         self.update_ui()
-        self.update_refresh_node_name_table()
+        self.update_refresh_node_name_table()   
+
+    def update_rop_output_toggled(self,state):
+        self.ui.rop_output_edit.setEnabled(state)
+    def update_rop_variant_toggled(self,state):
+        self.ui.rop_variant_edit.setEnabled(state)
+    def update_rop_context_toggled(self,state):
+        self.ui.rop_context_seq_combo.setEnabled(state)
+        self.ui.rop_context_shot_combo.setEnabled(state)
 
     #Utilities
     def util_rename_nodes(self):
@@ -154,10 +179,11 @@ class Copy_Renamer(QtWidgets.QWidget):
                 copy_list.append(node)
             tuple(copy_list)
             copy_nodes = hou.copyNodesTo(copy_list,copy_list[0].parent())
-            for i in range(len(self.node_list)):
-                node_name = self.node_list[i][0]
-                copy_nodes[i].setName(node_name,unique_name=True)
-                copy_nodes[i].move((8,0))
+            for node in self.node_list:
+                for copy in copy_nodes:
+                    if node[-3].rstrip('0123456789_') in copy.name():
+                        copy.setName(node[0],unique_name=True)
+                    copy.move((1,-1))                       
             self.update_refresh_node_select()
         else:
             for node in self.node_list:
@@ -388,10 +414,48 @@ class Check_OTL_Defaults_UI():
         
         return self.numbering_widget        
 
+    def arnold_rop_ui(self):
+        self.rop_output_check = QtWidgets.QCheckBox('Output: ')
+        self.rop_output_edit = QtWidgets.QLineEdit()
+        self.rop_output_edit.setEnabled(False)
+
+        rop_output_layout = QtWidgets.QHBoxLayout()
+        rop_output_layout.addWidget(self.rop_output_check)
+        rop_output_layout.addWidget(self.rop_output_edit)
+
+        self.rop_variant_check = QtWidgets.QCheckBox('Variant: ')
+        self.rop_variant_edit = QtWidgets.QLineEdit()
+        self.rop_variant_edit.setEnabled(False)
+
+        rop_variant_layout = QtWidgets.QHBoxLayout()
+        rop_variant_layout.addWidget(self.rop_variant_check)
+        rop_variant_layout.addWidget(self.rop_variant_edit)       
+
+        self.rop_context_check = QtWidgets.QCheckBox('Custom Context: ')
+        self.rop_context_seq_combo = QtWidgets.QComboBox()
+        self.rop_context_seq_combo.setEnabled(False)
+        self.rop_context_seq_combo.addItems(['xx000'])
+        self.rop_context_shot_combo = QtWidgets.QComboBox()
+        self.rop_context_shot_combo.setEnabled(False)
+        self.rop_context_shot_combo.addItems(['xx000_0000'])
+
+        rop_context_layout = QtWidgets.QHBoxLayout()
+        rop_context_layout.addWidget(self.rop_context_check)
+        rop_context_layout.addWidget(self.rop_context_seq_combo)
+        rop_context_layout.addWidget(self.rop_context_shot_combo)
+
+        arnold_rop_layout = QtWidgets.QVBoxLayout()
+        arnold_rop_layout.addLayout(rop_output_layout)
+        arnold_rop_layout.addLayout(rop_variant_layout)
+        arnold_rop_layout.addLayout(rop_context_layout)
+
+        self.arnold_rop_widget = QtWidgets.QWidget()
+        self.arnold_rop_widget.setMinimumWidth(350)
+        self.arnold_rop_widget.setLayout(arnold_rop_layout)
+
+        return self.arnold_rop_widget
+
     def setup_ui(self, widget):
-        #Refresh UI
-        self.refresh_nodes_button = QtWidgets.QPushButton('Refresh Node Selection')
-        self.refresh_nodes_button.setMinimumWidth(150)
         #Parameter Table
         self.node_name_table = QtWidgets.QTableWidget(0,2)
         self.node_name_table.setHorizontalHeaderLabels(['Node Name','New Node Name'])
@@ -406,6 +470,7 @@ class Check_OTL_Defaults_UI():
         self.search_replace_ui()
         self.insert_overwrite_ui()
         self.numbering_ui()
+        self.arnold_rop_ui()
 
         #Edit Undo Buttons
         self.node_name_undo_button = QtWidgets.QPushButton('Undo')
@@ -416,9 +481,11 @@ class Check_OTL_Defaults_UI():
 
         #Other Options
         self.trim_number_toggle = QtWidgets.QCheckBox('Trim Numbering')
+        #self.check_unique_toggle = QtWidgets.QCheckBox('Check if Unique')
         self.copy_toggle = QtWidgets.QCheckBox('Copy Nodes')
         other_options_layout = QtWidgets.QVBoxLayout()
         other_options_layout.addWidget(self.trim_number_toggle)
+        #other_options_layout.addWidget(self.check_unique_toggle)
         other_options_layout.addWidget(self.copy_toggle)
 
         #Rename
@@ -429,7 +496,6 @@ class Check_OTL_Defaults_UI():
 
         #Main Layout
         main_layout = QtWidgets.QGridLayout()
-        main_layout.addWidget(self.refresh_nodes_button,0,0)
         main_layout.addWidget(self.node_name_table,1,0,1,3)
         main_layout.addWidget(self.operation_combo,2,0)
         main_layout.addWidget(self.search_replace_widget,2,1)
@@ -438,6 +504,8 @@ class Check_OTL_Defaults_UI():
         main_layout.addWidget(self.numbering_widget,2,1)
         self.numbering_widget.setVisible(0)
 
+        main_layout.addWidget(self.arnold_rop_widget,2,1)
+        self.arnold_rop_widget.setVisible(0)
         main_layout.addLayout(other_options_layout,2,2)
         main_layout.addLayout(edit_undo_layout,3,1)
         main_layout.addLayout(rename_layout,4,2)
@@ -445,11 +513,10 @@ class Check_OTL_Defaults_UI():
         #Widget
         widget.setLayout(main_layout)
 
-try:
-    Check_OTL_Defaults_dialog.close()
-    Check_OTL_Defaults_dialog.deleteLater()
-except:
-    pass
+for window in QtGui.QGuiApplication.topLevelWindows():
+    if window.objectName()== 'Copy_RenamerClassWindow':
+        hou.ui.removeAllSelectionCallbacks()
+        window.close()
 
 Check_OTL_Defaults_dialog = Copy_Renamer()
 Check_OTL_Defaults_dialog.show()
