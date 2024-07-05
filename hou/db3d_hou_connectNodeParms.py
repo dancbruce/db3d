@@ -3,7 +3,7 @@
 ####Date: 07/03/2023 
 ####Software: Houdini 19.0.622
 ####Version: 1.2
-####Note: Connect multiple node parameters to a single primary node.
+####Note: Connect multiple secondary node parameters to a single primary node.
 ####Update:  Added attribute type check for string attributes.
 
 from PySide2 import QtCore
